@@ -7,13 +7,28 @@ import { App } from 'supertest/types';
 import { AuthService } from './../src/auth/auth.service.js';
 import { AppModule } from './../src/app.module.js';
 import { configureApp } from './../src/app.config.js';
-import type { Trip } from './../src/generated/prisma/client.js';
+import { Prisma, type Trip } from './../src/generated/prisma/client.js';
 import { PrismaService } from './../src/prisma/prisma.service.js';
 
 const testSecret = 'test-only-access-secret-that-is-at-least-32-characters';
 const testUserId = randomUUID();
 const trips: Array<Trip & { ownerId: string | null }> = [];
 const participants: Array<{ id: string; tripId: string; name: string }> = [];
+const expenses: Array<{
+  id: string;
+  tripId: string;
+  description: string;
+  amount: Prisma.Decimal;
+  currency: string;
+  trip: { currency: string };
+  createdAt: Date;
+  payer: { id: string; name: string };
+  shares: Array<{
+    participantId: string;
+    amount: Prisma.Decimal;
+    participant: { id: string; name: string };
+  }>;
+}> = [];
 const testUser = {
   id: testUserId,
   email: 'alex@example.com',
@@ -61,30 +76,89 @@ const prismaServiceMock = {
     findFirst: vi.fn(
       ({ where }: { where: { id: string; ownerId: string } }) => {
         const trip = trips.find(
-          (item) =>
-            item.id === where.id && item.ownerId === where.ownerId,
+          (item) => item.id === where.id && item.ownerId === where.ownerId,
         );
-        return Promise.resolve(trip ? { id: trip.id } : null);
+        return Promise.resolve(
+          trip ? { id: trip.id, currency: trip.currency } : null,
+        );
       },
     ),
   },
   participant: {
+    create: vi.fn(({ data }: { data: { tripId: string; name: string } }) => {
+      const participant = { id: randomUUID(), ...data };
+      participants.push(participant);
+      return Promise.resolve({
+        id: participant.id,
+        name: participant.name,
+      });
+    }),
+    findMany: vi.fn(
+      ({ where }: { where: { tripId: string; id?: { in: string[] } } }) =>
+        Promise.resolve(
+          participants
+            .filter(
+              (participant) =>
+                participant.tripId === where.tripId &&
+                (!where.id || where.id.in.includes(participant.id)),
+            )
+            .sort((left, right) => left.name.localeCompare(right.name))
+            .map(({ id, name }) => ({ id, name })),
+        ),
+    ),
+  },
+  expense: {
     create: vi.fn(
-      ({ data }: { data: { tripId: string; name: string } }) => {
-        const participant = { id: randomUUID(), ...data };
-        participants.push(participant);
-        return Promise.resolve({
-          id: participant.id,
-          name: participant.name,
-        });
+      ({
+        data,
+      }: {
+        data: {
+          tripId: string;
+          payerId: string;
+          description: string;
+          amount: string;
+          shares: { create: Array<{ participantId: string; amount: string }> };
+        };
+      }) => {
+        const trip = trips.find((item) => item.id === data.tripId);
+        const payer = participants.find((item) => item.id === data.payerId);
+        if (!trip || !payer) {
+          throw new Error(
+            'Expense test data references a missing trip or payer.',
+          );
+        }
+        const expense = {
+          id: randomUUID(),
+          tripId: data.tripId,
+          description: data.description,
+          amount: new Prisma.Decimal(data.amount),
+          currency: trip.currency,
+          trip: { currency: trip.currency },
+          createdAt: new Date(),
+          payer: { id: payer.id, name: payer.name },
+          shares: data.shares.create.map((share) => {
+            const participant = participants.find(
+              (item) => item.id === share.participantId,
+            );
+            if (!participant) {
+              throw new Error(
+                'Expense test data references a missing participant.',
+              );
+            }
+            return {
+              participantId: participant.id,
+              amount: new Prisma.Decimal(share.amount),
+              participant: { id: participant.id, name: participant.name },
+            };
+          }),
+        };
+        expenses.push(expense);
+        return Promise.resolve(expense);
       },
     ),
     findMany: vi.fn(({ where }: { where: { tripId: string } }) =>
       Promise.resolve(
-        participants
-          .filter((participant) => participant.tripId === where.tripId)
-          .sort((left, right) => left.name.localeCompare(right.name))
-          .map(({ id, name }) => ({ id, name })),
+        expenses.filter((expense) => expense.tripId === where.tripId),
       ),
     ),
   },
@@ -97,6 +171,7 @@ describe('AppController (e2e)', () => {
   beforeEach(async () => {
     trips.length = 0;
     participants.length = 0;
+    expenses.length = 0;
     process.env['JWT_ACCESS_SECRET'] = testSecret;
     vi.clearAllMocks();
     accessToken = await new JwtService({ secret: testSecret }).signAsync({
@@ -271,6 +346,139 @@ describe('AppController (e2e)', () => {
       .get('/trips/not-a-uuid/participants')
       .set('Authorization', `Bearer ${accessToken}`)
       .expect(400);
+  });
+
+  it('should create and list an expense with exact participant shares', async () => {
+    const tripId = randomUUID();
+    const payerId = randomUUID();
+    const secondParticipantId = randomUUID();
+    trips.push({
+      id: tripId,
+      name: 'Via Ferrata',
+      currency: 'RON',
+      createdAt: new Date(),
+      ownerId: testUserId,
+    });
+    participants.push(
+      { id: payerId, tripId, name: 'Alex' },
+      { id: secondParticipantId, tripId, name: 'Mara' },
+    );
+
+    const createResponse = await request(app.getHttpServer())
+      .post(`/trips/${tripId}/expenses`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        description: '  Cazare  ',
+        payerId,
+        amount: '125.50',
+        shares: [
+          { participantId: payerId, amount: '75.50' },
+          { participantId: secondParticipantId, amount: '50.00' },
+        ],
+      })
+      .expect(201);
+
+    expect(createResponse.body).toMatchObject({
+      description: 'Cazare',
+      amount: '125.50',
+      currency: 'RON',
+      payer: { id: payerId, name: 'Alex' },
+      shares: [
+        { participantId: payerId, amount: '75.50' },
+        { participantId: secondParticipantId, amount: '50.00' },
+      ],
+    });
+
+    await request(app.getHttpServer())
+      .get(`/trips/${tripId}/expenses`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200)
+      .expect([createResponse.body]);
+  });
+
+  it('should reject expense shares that do not equal the total', async () => {
+    const tripId = randomUUID();
+    const participantId = randomUUID();
+    trips.push({
+      id: tripId,
+      name: 'Via Ferrata',
+      currency: 'RON',
+      createdAt: new Date(),
+      ownerId: testUserId,
+    });
+    participants.push({ id: participantId, tripId, name: 'Alex' });
+
+    await request(app.getHttpServer())
+      .post(`/trips/${tripId}/expenses`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        description: 'Cazare',
+        payerId: participantId,
+        amount: '100.00',
+        shares: [{ participantId, amount: '99.99' }],
+      })
+      .expect(400);
+
+    expect(expenses).toHaveLength(0);
+  });
+
+  it('should reject duplicate participant shares', async () => {
+    const tripId = randomUUID();
+    const participantId = randomUUID();
+    trips.push({
+      id: tripId,
+      name: 'Via Ferrata',
+      currency: 'RON',
+      createdAt: new Date(),
+      ownerId: testUserId,
+    });
+    participants.push({ id: participantId, tripId, name: 'Alex' });
+
+    await request(app.getHttpServer())
+      .post(`/trips/${tripId}/expenses`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        description: 'Cazare',
+        payerId: participantId,
+        amount: '100.00',
+        shares: [
+          { participantId, amount: '50.00' },
+          { participantId, amount: '50.00' },
+        ],
+      })
+      .expect(400);
+
+    expect(expenses).toHaveLength(0);
+  });
+
+  it('should reject shares for participants outside the trip', async () => {
+    const tripId = randomUUID();
+    const payerId = randomUUID();
+    const outsiderId = randomUUID();
+    trips.push({
+      id: tripId,
+      name: 'Via Ferrata',
+      currency: 'RON',
+      createdAt: new Date(),
+      ownerId: testUserId,
+    });
+    participants.push(
+      { id: payerId, tripId, name: 'Alex' },
+      { id: outsiderId, tripId: randomUUID(), name: 'Mara' },
+    );
+
+    await request(app.getHttpServer())
+      .post(`/trips/${tripId}/expenses`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({
+        description: 'Cazare',
+        payerId,
+        amount: '100.00',
+        shares: [{ participantId: outsiderId, amount: '100.00' }],
+      })
+      .expect(400);
+
+    expect(expenses).toHaveLength(0);
   });
 
   afterEach(async () => {

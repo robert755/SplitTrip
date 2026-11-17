@@ -36,12 +36,16 @@
 - `POST /trips` creates a trip for the authenticated user with a JSON body such as `{ "name": "Via Ferrata" }`.
 - `GET /trips/:tripId/participants` lists participants in a trip owned by the authenticated user.
 - `POST /trips/:tripId/participants` adds a participant with a JSON body such as `{ "name": "Alex" }`.
+- `GET /trips/:tripId/expenses` lists expenses in a trip owned by the authenticated user.
+- `POST /trips/:tripId/expenses` adds an expense with a payer and custom participant shares.
 
 Trips are stored in the configured PostgreSQL database through Prisma. Passwords are hashed with Argon2id. Refresh tokens are random, stored only as SHA-256 hashes, rotated on refresh, and revoked on logout or detected reuse. Access tokens expire after 15 minutes. Authentication endpoints are rate limited, and auth mutations are restricted to configured browser origins.
 
 Copy `.env.example` to `.env`, generate a unique `JWT_ACCESS_SECRET` with at least 32 characters (for example, `node -e "console.log(require('node:crypto').randomBytes(48).toString('base64url'))"`), and set `FRONTEND_ORIGINS` to the exact origin of the frontend. In production, use HTTPS and configure the frontend and API on a shared site (for example, `app.example.com` and `api.example.com`) so browsers can reliably send the secure refresh cookie. Browser requests to the API must include credentials so the refresh cookie is sent. Email verification and password reset are not implemented yet.
 
 After registering or logging in, send the returned access token as `Authorization: Bearer <accessToken>` to protected endpoints such as `/trips`. The refresh token is never returned in JSON; browsers keep it in the HttpOnly cookie.
+
+Expense amounts must be decimal strings with up to two fractional digits (for example, `"125.50"`). The API validates that each payer and share belongs to the trip, rejects duplicate participant shares, and checks that all shares sum exactly to the expense total.
 
 ## Database setup
 
