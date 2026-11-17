@@ -4,6 +4,7 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller.js';
 import { AppService } from './app.service.js';
 import { AuthModule } from './auth/auth.module.js';
+import { ExpensesModule } from './expenses/expenses.module.js';
 import { ParticipantsModule } from './participants/participants.module.js';
 import { TripsModule } from './trips/trips.module.js';
 
@@ -13,6 +14,7 @@ import { TripsModule } from './trips/trips.module.js';
     AuthModule,
     TripsModule,
     ParticipantsModule,
+    ExpensesModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],
