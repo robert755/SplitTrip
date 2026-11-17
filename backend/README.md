@@ -38,6 +38,7 @@
 - `POST /trips/:tripId/participants` adds a participant with a JSON body such as `{ "name": "Alex" }`.
 - `GET /trips/:tripId/expenses` lists expenses in a trip owned by the authenticated user.
 - `POST /trips/:tripId/expenses` adds an expense with a payer and custom participant shares.
+- `GET /trips/:tripId/settlements` returns net balances and an exact minimum-transfer settlement plan.
 
 Trips are stored in the configured PostgreSQL database through Prisma. Passwords are hashed with Argon2id. Refresh tokens are random, stored only as SHA-256 hashes, rotated on refresh, and revoked on logout or detected reuse. Access tokens expire after 15 minutes. Authentication endpoints are rate limited, and auth mutations are restricted to configured browser origins.
 
@@ -46,6 +47,8 @@ Copy `.env.example` to `.env`, generate a unique `JWT_ACCESS_SECRET` with at lea
 After registering or logging in, send the returned access token as `Authorization: Bearer <accessToken>` to protected endpoints such as `/trips`. The refresh token is never returned in JSON; browsers keep it in the HttpOnly cookie.
 
 Expense amounts must be decimal strings with up to two fractional digits (for example, `"125.50"`). The API validates that each payer and share belongs to the trip, rejects duplicate participant shares, and checks that all shares sum exactly to the expense total.
+
+Settlement plans minimize the number of transfers exactly for trips with up to 16 participants who have non-zero balances. A larger calculation returns `422` instead of silently switching to an approximate result.
 
 ## Database setup
 

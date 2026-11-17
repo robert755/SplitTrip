@@ -17,6 +17,7 @@ const participants: Array<{ id: string; tripId: string; name: string }> = [];
 const expenses: Array<{
   id: string;
   tripId: string;
+  payerId: string;
   description: string;
   amount: Prisma.Decimal;
   currency: string;
@@ -79,7 +80,26 @@ const prismaServiceMock = {
           (item) => item.id === where.id && item.ownerId === where.ownerId,
         );
         return Promise.resolve(
-          trip ? { id: trip.id, currency: trip.currency } : null,
+          trip
+            ? {
+                id: trip.id,
+                currency: trip.currency,
+                participants: participants
+                  .filter((participant) => participant.tripId === trip.id)
+                  .sort((left, right) => left.name.localeCompare(right.name))
+                  .map(({ id, name }) => ({ id, name })),
+                expenses: expenses
+                  .filter((expense) => expense.tripId === trip.id)
+                  .map((expense) => ({
+                    amount: expense.amount,
+                    payerId: expense.payerId,
+                    shares: expense.shares.map(({ participantId, amount }) => ({
+                      participantId,
+                      amount,
+                    })),
+                  })),
+              }
+            : null,
         );
       },
     ),
@@ -130,6 +150,7 @@ const prismaServiceMock = {
         const expense = {
           id: randomUUID(),
           tripId: data.tripId,
+          payerId: data.payerId,
           description: data.description,
           amount: new Prisma.Decimal(data.amount),
           currency: trip.currency,
@@ -479,6 +500,92 @@ describe('AppController (e2e)', () => {
       .expect(400);
 
     expect(expenses).toHaveLength(0);
+  });
+
+  it('should calculate the minimum transfers from exact net balances', async () => {
+    const tripId = randomUUID();
+    const [alexId, maraId, teoId, danaId] = Array.from({ length: 4 }, () =>
+      randomUUID(),
+    );
+    trips.push({
+      id: tripId,
+      name: 'Weekend trip',
+      currency: 'RON',
+      createdAt: new Date(),
+      ownerId: testUserId,
+    });
+    participants.push(
+      { id: alexId, tripId, name: 'Alex' },
+      { id: maraId, tripId, name: 'Mara' },
+      { id: teoId, tripId, name: 'Teo' },
+      { id: danaId, tripId, name: 'Dana' },
+    );
+    expenses.push(
+      {
+        id: randomUUID(),
+        tripId,
+        payerId: alexId,
+        description: 'Cazare',
+        amount: new Prisma.Decimal('100.00'),
+        currency: 'RON',
+        trip: { currency: 'RON' },
+        createdAt: new Date(),
+        payer: { id: alexId, name: 'Alex' },
+        shares: [
+          {
+            participantId: maraId,
+            amount: new Prisma.Decimal('100.00'),
+            participant: { id: maraId, name: 'Mara' },
+          },
+        ],
+      },
+      {
+        id: randomUUID(),
+        tripId,
+        payerId: teoId,
+        description: 'Benzina',
+        amount: new Prisma.Decimal('50.00'),
+        currency: 'RON',
+        trip: { currency: 'RON' },
+        createdAt: new Date(),
+        payer: { id: teoId, name: 'Teo' },
+        shares: [
+          {
+            participantId: danaId,
+            amount: new Prisma.Decimal('50.00'),
+            participant: { id: danaId, name: 'Dana' },
+          },
+        ],
+      },
+    );
+
+    const response = await request(app.getHttpServer())
+      .get(`/trips/${tripId}/settlements`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200);
+
+    expect(response.body).toMatchObject({
+      currency: 'RON',
+      transferCount: 2,
+      balances: [
+        { participantId: alexId, balance: '100.00' },
+        { participantId: danaId, balance: '-50.00' },
+        { participantId: maraId, balance: '-100.00' },
+        { participantId: teoId, balance: '50.00' },
+      ],
+      settlements: [
+        {
+          from: { participantId: maraId, name: 'Mara' },
+          to: { participantId: alexId, name: 'Alex' },
+          amount: '100.00',
+        },
+        {
+          from: { participantId: danaId, name: 'Dana' },
+          to: { participantId: teoId, name: 'Teo' },
+          amount: '50.00',
+        },
+      ],
+    });
   });
 
   afterEach(async () => {

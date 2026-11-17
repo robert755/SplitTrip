@@ -6,6 +6,7 @@ import { AppService } from './app.service.js';
 import { AuthModule } from './auth/auth.module.js';
 import { ExpensesModule } from './expenses/expenses.module.js';
 import { ParticipantsModule } from './participants/participants.module.js';
+import { SettlementsModule } from './settlements/settlements.module.js';
 import { TripsModule } from './trips/trips.module.js';
 
 @Module({
@@ -15,6 +16,7 @@ import { TripsModule } from './trips/trips.module.js';
     TripsModule,
     ParticipantsModule,
     ExpensesModule,
+    SettlementsModule,
   ],
   controllers: [AppController],
   providers: [AppService, { provide: APP_GUARD, useClass: ThrottlerGuard }],
