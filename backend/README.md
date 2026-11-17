@@ -25,6 +25,18 @@
 
 [Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
 
+## API
+
+- `GET /health` checks that the API is running.
+- `GET /trips` lists trips.
+- `POST /trips` creates a trip with a JSON body such as `{ "name": "Via Ferrata" }`.
+
+Trips are stored in the configured PostgreSQL database through Prisma.
+
+## Database setup
+
+Prisma is initialized for PostgreSQL with `Trip`, `Participant`, `Expense`, and `ExpenseShare` models. The participant count is derived from each trip's participants. Expense shares store each participant's custom amount; the application will validate that shares add up to the expense total. Expenses in a trip use its currency, which defaults to RON. Copy `.env.example` to `.env` and replace both placeholders with the connection strings from Supabase. `DATABASE_URL` uses the transaction-mode pooler (port `6543`) for the app, while `DIRECT_URL` uses the session-mode pooler (port `5432`) for Prisma CLI commands and migrations. Keep `.env` local and never commit it.
+
 ## Project setup
 
 ```bash
