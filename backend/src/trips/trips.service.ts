@@ -1,21 +1,33 @@
 import { Injectable } from '@nestjs/common';
-import type { Trip } from '../generated/prisma/client.js';
+import { Prisma, type Trip } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { CreateTripDto } from './create-trip.dto.js';
+
+export type TripResponse = Pick<Trip, 'id' | 'name' | 'currency' | 'createdAt'>;
+
+const tripSelect = {
+  id: true,
+  name: true,
+  currency: true,
+  createdAt: true,
+} satisfies Prisma.TripSelect;
 
 @Injectable()
 export class TripsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  create(createTripDto: CreateTripDto): Promise<Trip> {
+  create(createTripDto: CreateTripDto, ownerId: string): Promise<TripResponse> {
     return this.prisma.trip.create({
-      data: { name: createTripDto.name.trim() },
+      data: { name: createTripDto.name.trim(), ownerId },
+      select: tripSelect,
     });
   }
 
-  findAll(): Promise<Trip[]> {
+  findAll(ownerId: string): Promise<TripResponse[]> {
     return this.prisma.trip.findMany({
+      where: { ownerId },
       orderBy: { createdAt: 'desc' },
+      select: tripSelect,
     });
   }
 }
