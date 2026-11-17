@@ -13,6 +13,7 @@ import { PrismaService } from './../src/prisma/prisma.service.js';
 const testSecret = 'test-only-access-secret-that-is-at-least-32-characters';
 const testUserId = randomUUID();
 const trips: Array<Trip & { ownerId: string | null }> = [];
+const participants: Array<{ id: string; tripId: string; name: string }> = [];
 const testUser = {
   id: testUserId,
   email: 'alex@example.com',
@@ -57,6 +58,35 @@ const prismaServiceMock = {
           .map(({ ownerId: _ownerId, ...trip }) => trip),
       ),
     ),
+    findFirst: vi.fn(
+      ({ where }: { where: { id: string; ownerId: string } }) => {
+        const trip = trips.find(
+          (item) =>
+            item.id === where.id && item.ownerId === where.ownerId,
+        );
+        return Promise.resolve(trip ? { id: trip.id } : null);
+      },
+    ),
+  },
+  participant: {
+    create: vi.fn(
+      ({ data }: { data: { tripId: string; name: string } }) => {
+        const participant = { id: randomUUID(), ...data };
+        participants.push(participant);
+        return Promise.resolve({
+          id: participant.id,
+          name: participant.name,
+        });
+      },
+    ),
+    findMany: vi.fn(({ where }: { where: { tripId: string } }) =>
+      Promise.resolve(
+        participants
+          .filter((participant) => participant.tripId === where.tripId)
+          .sort((left, right) => left.name.localeCompare(right.name))
+          .map(({ id, name }) => ({ id, name })),
+      ),
+    ),
   },
 };
 
@@ -66,6 +96,7 @@ describe('AppController (e2e)', () => {
 
   beforeEach(async () => {
     trips.length = 0;
+    participants.length = 0;
     process.env['JWT_ACCESS_SECRET'] = testSecret;
     vi.clearAllMocks();
     accessToken = await new JwtService({ secret: testSecret }).signAsync({
@@ -188,6 +219,57 @@ describe('AppController (e2e)', () => {
       .post('/trips')
       .set('Authorization', `Bearer ${accessToken}`)
       .send({ name: '   ' })
+      .expect(400);
+  });
+
+  it('should add and list participants for an owned trip', async () => {
+    const tripId = randomUUID();
+    trips.push({
+      id: tripId,
+      name: 'Via Ferrata',
+      currency: 'RON',
+      createdAt: new Date(),
+      ownerId: testUserId,
+    });
+
+    const createResponse = await request(app.getHttpServer())
+      .post(`/trips/${tripId}/participants`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .send({ name: '  Alex  ' })
+      .expect(201);
+
+    expect(createResponse.body).toMatchObject({
+      id: expect.any(String),
+      name: 'Alex',
+    });
+
+    await request(app.getHttpServer())
+      .get(`/trips/${tripId}/participants`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(200)
+      .expect([createResponse.body]);
+  });
+
+  it('should not allow access to another user trip participants', async () => {
+    const tripId = randomUUID();
+    trips.push({
+      id: tripId,
+      name: 'Private trip',
+      currency: 'RON',
+      createdAt: new Date(),
+      ownerId: randomUUID(),
+    });
+
+    await request(app.getHttpServer())
+      .get(`/trips/${tripId}/participants`)
+      .set('Authorization', `Bearer ${accessToken}`)
+      .expect(404);
+  });
+
+  it('should reject a malformed trip id before querying the database', () => {
+    return request(app.getHttpServer())
+      .get('/trips/not-a-uuid/participants')
+      .set('Authorization', `Bearer ${accessToken}`)
       .expect(400);
   });
 

@@ -34,6 +34,8 @@
 - `POST /auth/logout` revokes the refresh-token family and clears the cookie.
 - `GET /trips` lists the authenticated user's trips.
 - `POST /trips` creates a trip for the authenticated user with a JSON body such as `{ "name": "Via Ferrata" }`.
+- `GET /trips/:tripId/participants` lists participants in a trip owned by the authenticated user.
+- `POST /trips/:tripId/participants` adds a participant with a JSON body such as `{ "name": "Alex" }`.
 
 Trips are stored in the configured PostgreSQL database through Prisma. Passwords are hashed with Argon2id. Refresh tokens are random, stored only as SHA-256 hashes, rotated on refresh, and revoked on logout or detected reuse. Access tokens expire after 15 minutes. Authentication endpoints are rate limited, and auth mutations are restricted to configured browser origins.
 
