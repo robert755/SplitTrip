@@ -14,6 +14,7 @@ import type { CookieOptions, Request, Response } from 'express';
 import {
   REFRESH_TOKEN_COOKIE,
   REFRESH_TOKEN_TTL_MS,
+  getRefreshTokenCookiePath,
 } from './auth.constants.js';
 import { AuthService } from './auth.service.js';
 import { AuthOriginGuard } from './guards/auth-origin.guard.js';
@@ -94,8 +95,8 @@ export class AuthController {
     return {
       httpOnly: true,
       secure: isProduction,
-      sameSite: isProduction ? 'none' : 'lax',
-      path: '/auth',
+      sameSite: 'lax',
+      path: getRefreshTokenCookiePath(),
     };
   }
 

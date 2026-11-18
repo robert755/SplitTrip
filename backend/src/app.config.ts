@@ -1,9 +1,13 @@
 import cookieParser from 'cookie-parser';
 import { ValidationPipe, type INestApplication } from '@nestjs/common';
-import { getAllowedFrontendOrigins } from './auth/auth.constants.js';
+import {
+  getAllowedFrontendOrigins,
+  getRefreshTokenCookiePath,
+} from './auth/auth.constants.js';
 
 export function configureApp(app: INestApplication): void {
   const allowedOrigins = getAllowedFrontendOrigins();
+  getRefreshTokenCookiePath();
   if (process.env['NODE_ENV'] === 'production' && allowedOrigins.length === 0) {
     throw new Error('FRONTEND_ORIGINS must be configured in production.');
   }

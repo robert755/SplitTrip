@@ -194,6 +194,7 @@ describe('AppController (e2e)', () => {
     participants.length = 0;
     expenses.length = 0;
     process.env['JWT_ACCESS_SECRET'] = testSecret;
+    process.env['REFRESH_TOKEN_COOKIE_PATH'] = '/api/auth';
     vi.clearAllMocks();
     accessToken = await new JwtService({ secret: testSecret }).signAsync({
       sub: testUserId,
@@ -239,7 +240,19 @@ describe('AppController (e2e)', () => {
     });
     expect(response.body.refreshToken).toBeUndefined();
     expect(response.headers['set-cookie'][0]).toContain('HttpOnly');
+    expect(response.headers['set-cookie'][0]).toContain('Path=/api/auth');
+    expect(response.headers['set-cookie'][0]).toContain('SameSite=Lax');
     expect(response.headers['set-cookie'][0]).toContain('splittrip_refresh=');
+  });
+
+  it('/auth/logout should clear the refresh cookie on the configured path', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/auth/logout')
+      .expect(204);
+
+    expect(response.headers['set-cookie'][0]).toContain('Path=/api/auth');
+    expect(response.headers['set-cookie'][0]).toContain('SameSite=Lax');
+    expect(response.headers['set-cookie'][0]).toContain('splittrip_refresh=;');
   });
 
   it('/auth/register should reject an invalid email and short password', () => {
