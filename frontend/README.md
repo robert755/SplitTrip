@@ -33,6 +33,8 @@ The access token is kept in memory; the backend refresh token stays in its HttpO
 
 For a Vercel deployment, set `NEXT_PUBLIC_API_URL=/api` and `API_PROXY_TARGET` to the backend's HTTPS origin. Next.js proxies `/api/*` to the backend so the browser uses a first-party refresh cookie. On the backend, set `REFRESH_TOKEN_COOKIE_PATH=/api/auth` and add the exact Vercel origin to `FRONTEND_ORIGINS`.
 
+To deploy, import the repository into Vercel and set the project root directory to `frontend`. Deploy once to obtain the Vercel origin, configure the backend, then set the two frontend variables above in Vercel's Production environment and redeploy.
+
 ## Validate
 
 ```powershell

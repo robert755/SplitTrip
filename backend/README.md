@@ -88,7 +88,20 @@ $ npm run test:e2e
 $ npm run test:cov
 ```
 
-## Deployment
+## Deploying on Render
+
+The repository includes a Render Blueprint at `../render.yaml`. It creates a free Node web service in Frankfurt, runs Prisma migrations during the build, starts the production NestJS server, and uses `/health` as its health check.
+
+1. Create the Vercel project first with `frontend` as its root directory and deploy once to obtain its exact `vercel.app` origin.
+2. In Render, create a Blueprint from this repository. Provide `DATABASE_URL` and `DIRECT_URL` from Supabase, generate a unique `JWT_ACCESS_SECRET` of at least 32 characters, and set `FRONTEND_ORIGINS` to the exact Vercel origin (no trailing slash). Do not put these secrets in the repository.
+3. After Render provides the API URL, set these Vercel environment variables for Production:
+   - `NEXT_PUBLIC_API_URL=/api`
+   - `API_PROXY_TARGET` to the Render API origin, without a trailing slash.
+4. Redeploy Vercel. The same-origin proxy then forwards `/api/*` to Render. The Blueprint sets `REFRESH_TOKEN_COOKIE_PATH=/api/auth`.
+
+The Blueprint uses Frankfurt; choose the Render region closest to the Supabase database if it is hosted elsewhere. Render's free service can sleep when idle, so the first request after inactivity may take longer.
+
+## Generic NestJS deployment resources
 
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
 
