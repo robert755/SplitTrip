@@ -12,8 +12,11 @@ import {
 import {
   ApiError,
   apiRequest,
+  refreshAuthSession,
+  subscribeToAccessToken,
   type AuthResponse,
   type AuthUser,
+  updateAccessToken,
 } from "@/lib/api";
 
 interface AuthContextValue {
@@ -37,29 +40,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const applyAuth = useCallback((auth: AuthResponse) => {
+    updateAccessToken(auth.accessToken);
     setAccessToken(auth.accessToken);
     setUser(auth.user);
     setInitializationError(null);
   }, []);
 
   useEffect(() => {
+    return subscribeToAccessToken((token) => {
+      setAccessToken(token);
+      if (!token) {
+        setUser(null);
+      }
+    });
+  }, []);
+
+  useEffect(() => {
     let active = true;
 
-    void apiRequest<AuthResponse>("/auth/refresh", { method: "POST" })
+    void refreshAuthSession()
       .then((auth) => {
-        if (active) {
+        if (active && auth) {
           applyAuth(auth);
+        } else if (active) {
+          setAccessToken(null);
+          setUser(null);
         }
       })
       .catch((error: unknown) => {
         if (active) {
-          setAccessToken(null);
-          setUser(null);
-          if (!(error instanceof ApiError && error.status === 401)) {
-            setInitializationError(
-              "We couldn't check your session. Make sure the API is running.",
-            );
-          }
+          setInitializationError(
+            error instanceof ApiError && error.status === 401
+              ? null
+              : "We couldn't check your session. Make sure the API is running.",
+          );
         }
       })
       .finally(() => {
@@ -99,6 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       await apiRequest<void>("/auth/logout", { method: "POST" });
     } finally {
+      updateAccessToken(null);
       setAccessToken(null);
       setUser(null);
     }

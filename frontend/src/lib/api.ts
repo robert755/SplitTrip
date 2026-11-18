@@ -2,6 +2,12 @@ const apiBaseUrl =
   process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "") ??
   "http://localhost:3001";
 
+type AccessTokenListener = (accessToken: string | null) => void;
+
+let currentAccessToken: string | null = null;
+let refreshInFlight: Promise<AuthResponse | null> | null = null;
+const accessTokenListeners = new Set<AccessTokenListener>();
+
 export interface AuthUser {
   id: string;
   email: string;
@@ -64,19 +70,21 @@ export class ApiError extends Error {
   }
 }
 
-export async function apiRequest<T>(
-  path: string,
-  options: RequestInit = {},
-): Promise<T> {
-  const response = await fetch(`${apiBaseUrl}${path}`, {
-    ...options,
-    credentials: "include",
-    headers: {
-      ...(options.body ? { "Content-Type": "application/json" } : {}),
-      ...options.headers,
-    },
-  });
+export function updateAccessToken(accessToken: string | null): void {
+  currentAccessToken = accessToken;
+  for (const listener of accessTokenListeners) {
+    listener(accessToken);
+  }
+}
 
+export function subscribeToAccessToken(
+  listener: AccessTokenListener,
+): () => void {
+  accessTokenListeners.add(listener);
+  return () => accessTokenListeners.delete(listener);
+}
+
+async function readResponse<T>(response: Response): Promise<T> {
   const contentType = response.headers.get("content-type") ?? "";
   const payload: unknown = contentType.includes("application/json")
     ? await response.json()
@@ -102,4 +110,83 @@ export async function apiRequest<T>(
   }
 
   return payload as T;
+}
+
+async function sendRequest(
+  path: string,
+  options: RequestInit,
+  headers: Headers,
+): Promise<Response> {
+  return fetch(`${apiBaseUrl}${path}`, {
+    ...options,
+    credentials: "include",
+    headers,
+  });
+}
+
+async function performRefresh(): Promise<AuthResponse | null> {
+  try {
+    const response = await sendRequest(
+      "/auth/refresh",
+      { method: "POST" },
+      new Headers(),
+    );
+    const auth = await readResponse<AuthResponse>(response);
+    updateAccessToken(auth.accessToken);
+    return auth;
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 401) {
+      updateAccessToken(null);
+      return null;
+    }
+    throw error;
+  }
+}
+
+export function refreshAuthSession(): Promise<AuthResponse | null> {
+  if (refreshInFlight) {
+    return refreshInFlight;
+  }
+
+  const refresh = async (): Promise<AuthResponse | null> => {
+    if (typeof navigator !== "undefined" && navigator.locks) {
+      return navigator.locks.request("splittrip-auth-refresh", performRefresh);
+    }
+    return performRefresh();
+  };
+
+  refreshInFlight = refresh().finally(() => {
+    refreshInFlight = null;
+  });
+  return refreshInFlight;
+}
+
+export async function apiRequest<T>(
+  path: string,
+  options: RequestInit = {},
+): Promise<T> {
+  const headers = new Headers(options.headers);
+  if (options.body && !headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  const requestToken =
+    currentAccessToken ??
+    headers.get("Authorization")?.replace(/^Bearer\s+/i, "") ??
+    null;
+  if (currentAccessToken) {
+    headers.set("Authorization", `Bearer ${currentAccessToken}`);
+  }
+
+  let response = await sendRequest(path, options, headers);
+  if (response.status === 401 && requestToken) {
+    const auth = await refreshAuthSession();
+    if (auth) {
+      const retryHeaders = new Headers(headers);
+      retryHeaders.set("Authorization", `Bearer ${auth.accessToken}`);
+      response = await sendRequest(path, options, retryHeaders);
+    }
+  }
+
+  return readResponse<T>(response);
 }

@@ -2,6 +2,16 @@ export const REFRESH_TOKEN_COOKIE = 'splittrip_refresh';
 export const REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 export const ACCESS_TOKEN_TTL = '15m';
 
+export function getRefreshTokenCookiePath(): string {
+  const path = process.env['REFRESH_TOKEN_COOKIE_PATH'] ?? '/auth';
+  if (!path.startsWith('/') || path.startsWith('//') || /[;\s]/.test(path)) {
+    throw new Error(
+      'REFRESH_TOKEN_COOKIE_PATH must be a valid absolute URL path.',
+    );
+  }
+  return path;
+}
+
 export function getAccessTokenSecret(): string {
   const secret = process.env['JWT_ACCESS_SECRET'];
   if (!secret || Buffer.byteLength(secret, 'utf8') < 32) {

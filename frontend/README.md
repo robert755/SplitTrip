@@ -29,7 +29,9 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000).
 
-The access token is kept in memory; the backend refresh token stays in its HttpOnly cookie. The dashboard refreshes the session when the app is opened again.
+The access token is kept in memory; the backend refresh token stays in its HttpOnly cookie. The session is restored when the app opens, and an expired access token is refreshed and retried automatically.
+
+For a Vercel deployment, set `NEXT_PUBLIC_API_URL=/api` and `API_PROXY_TARGET` to the backend's HTTPS origin. Next.js proxies `/api/*` to the backend so the browser uses a first-party refresh cookie. On the backend, set `REFRESH_TOKEN_COOKIE_PATH=/api/auth` and add the exact Vercel origin to `FRONTEND_ORIGINS`.
 
 ## Validate
 
