@@ -60,6 +60,36 @@ export class ParticipantsService {
     });
   }
 
+  async remove(
+    tripId: string,
+    participantId: string,
+    ownerId: string,
+  ): Promise<void> {
+    await this.ensureTripIsOwnedByUser(tripId, ownerId);
+
+    const participant = await this.prisma.participant.findFirst({
+      where: { id: participantId, tripId },
+      select: {
+        id: true,
+        _count: { select: { paidExpenses: true, shares: true } },
+      },
+    });
+
+    if (!participant) {
+      throw new NotFoundException('Participant not found.');
+    }
+
+    if (participant._count.paidExpenses > 0 || participant._count.shares > 0) {
+      throw new BadRequestException(
+        'This person is used in expenses. Edit or delete those expenses before removing them.',
+      );
+    }
+
+    await this.prisma.participant.delete({
+      where: { id: participant.id },
+    });
+  }
+
   private async ensureTripIsOwnedByUser(
     tripId: string,
     ownerId: string,

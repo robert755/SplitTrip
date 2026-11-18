@@ -70,6 +70,9 @@ export function TripWorkspace({ tripId }: { tripId: string }) {
   const [settlements, setSettlements] = useState<Settlements | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isAddingParticipant, setIsAddingParticipant] = useState(false);
+  const [isDeletingParticipantId, setIsDeletingParticipantId] = useState<
+    string | null
+  >(null);
   const [isSubmittingExpense, setIsSubmittingExpense] = useState(false);
   const [isCalculating, setIsCalculating] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
@@ -209,6 +212,63 @@ export function TripWorkspace({ tripId }: { tripId: string }) {
       );
     } finally {
       setIsAddingParticipant(false);
+    }
+  }
+
+  async function deleteParticipant(participant: Participant) {
+    if (
+      !window.confirm(
+        `Remove ${participant.name} from this trip? People used in expenses cannot be removed.`,
+      )
+    ) {
+      return;
+    }
+    if (!accessToken) {
+      router.replace("/login");
+      return;
+    }
+
+    setError("");
+    setNotice("");
+    setIsDeletingParticipantId(participant.id);
+    try {
+      await apiRequest<void>(
+        `/trips/${tripId}/participants/${participant.id}`,
+        {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${accessToken}` },
+        },
+      );
+      setParticipants((current) =>
+        current.filter(
+          (currentParticipant) => currentParticipant.id !== participant.id,
+        ),
+      );
+      setIncludedParticipantIds((current) =>
+        current.filter((id) => id !== participant.id),
+      );
+      setShareAmounts((current) =>
+        Object.fromEntries(
+          Object.entries(current).filter(([id]) => id !== participant.id),
+        ),
+      );
+      setPayerId((current) =>
+        current === participant.id
+          ? (participants.find((candidate) => candidate.id !== participant.id)
+              ?.id ?? "")
+          : current,
+      );
+      setSettlements(null);
+      setNotice(`${participant.name} was removed from the trip.`);
+    } catch (deleteError) {
+      setError(
+        apiErrorMessage(
+          deleteError,
+          "We couldn't remove this person. Please try again.",
+        ),
+      );
+    } finally {
+      setIsDeletingParticipantId(null);
     }
   }
 
@@ -528,7 +588,20 @@ export function TripWorkspace({ tripId }: { tripId: string }) {
                         >
                           {participant.name.slice(0, 1).toUpperCase()}
                         </span>
-                        <span>{participant.name}</span>
+                        <span className="participant-name">
+                          {participant.name}
+                        </span>
+                        <button
+                          aria-label={`Remove ${participant.name}`}
+                          className="participant-delete-button"
+                          disabled={isDeletingParticipantId !== null}
+                          onClick={() => deleteParticipant(participant)}
+                          type="button"
+                        >
+                          {isDeletingParticipantId === participant.id
+                            ? "Removing..."
+                            : "Delete"}
+                        </button>
                       </li>
                     ))}
                   </ul>

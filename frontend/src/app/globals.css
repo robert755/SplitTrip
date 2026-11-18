@@ -1784,6 +1784,32 @@ a {
   font-weight: 610;
 }
 
+.participant-name {
+  min-width: 0;
+  flex: 1;
+  overflow-wrap: anywhere;
+}
+
+.participant-delete-button {
+  padding: 6px 9px;
+  border: 1px solid #f0d9d9;
+  border-radius: 6px;
+  background: #fff;
+  color: #a13d3d;
+  font: inherit;
+  font-size: 9px;
+  cursor: pointer;
+}
+
+.participant-delete-button:hover:not(:disabled) {
+  background: #fff4f4;
+}
+
+.participant-delete-button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
 .participant-avatar {
   width: 30px;
   height: 30px;
