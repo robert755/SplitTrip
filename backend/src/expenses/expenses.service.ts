@@ -43,6 +43,75 @@ export interface ExpenseResponse {
 export class ExpensesService {
   constructor(private readonly prisma: PrismaService) {}
 
+  async update(
+    tripId: string,
+    expenseId: string,
+    ownerId: string,
+    dto: CreateExpenseDto,
+  ): Promise<ExpenseResponse> {
+    await this.ensureTripIsOwnedByUser(tripId, ownerId);
+    this.validateShareTotal(dto.amount, dto.shares);
+
+    const participantIds = dto.shares.map((share) => share.participantId);
+    if (new Set(participantIds).size !== participantIds.length) {
+      throw new BadRequestException('A participant can only have one share.');
+    }
+
+    const validParticipants = await this.prisma.participant.findMany({
+      where: {
+        tripId,
+        id: { in: [...new Set([...participantIds, dto.payerId])] },
+      },
+      select: { id: true },
+    });
+    const validParticipantIds = new Set(
+      validParticipants.map((participant) => participant.id),
+    );
+
+    if (
+      !validParticipantIds.has(dto.payerId) ||
+      participantIds.some(
+        (participantId) => !validParticipantIds.has(participantId),
+      )
+    ) {
+      throw new BadRequestException(
+        'The payer and all shares must belong to this trip.',
+      );
+    }
+
+    const existingExpense = await this.prisma.expense.findFirst({
+      where: { id: expenseId, tripId },
+      select: { id: true },
+    });
+    if (!existingExpense) {
+      throw new NotFoundException('Expense not found.');
+    }
+
+    const expense = await this.prisma.$transaction(async (transaction) => {
+      await transaction.expenseShare.deleteMany({
+        where: { expenseId },
+      });
+
+      return transaction.expense.update({
+        where: { id: expenseId },
+        data: {
+          payerId: dto.payerId,
+          description: dto.description,
+          amount: dto.amount,
+          shares: {
+            create: dto.shares.map((share) => ({
+              participantId: share.participantId,
+              amount: share.amount,
+            })),
+          },
+        },
+        select: expenseSelect,
+      });
+    });
+
+    return this.toResponse(expense);
+  }
+
   async create(
     tripId: string,
     ownerId: string,

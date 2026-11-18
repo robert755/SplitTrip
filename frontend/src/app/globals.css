@@ -1957,7 +1957,7 @@ a {
 
 .workspace-expense-row {
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr) auto;
+  grid-template-columns: 34px minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 11px;
   padding: 13px 0;
@@ -2004,6 +2004,23 @@ a {
   color: var(--ink);
   font-size: 11px;
   white-space: nowrap;
+}
+
+.expense-edit-button,
+.expense-edit-cancel {
+  border: 0;
+  background: transparent;
+  color: var(--blue);
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.expense-edit-cancel {
+  padding: 6px 8px;
+  border: 1px solid #dfe4f8;
+  border-radius: 999px;
+  background: white;
 }
 
 .settlement-workspace {

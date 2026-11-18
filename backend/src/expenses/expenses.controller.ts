@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Param,
+  Patch,
   ParseUUIDPipe,
   Post,
   Req,
@@ -17,6 +18,21 @@ import { ExpensesService, type ExpenseResponse } from './expenses.service.js';
 @UseGuards(AccessTokenGuard)
 export class ExpensesController {
   constructor(private readonly expensesService: ExpensesService) {}
+
+  @Patch(':expenseId')
+  update(
+    @Param('tripId', ParseUUIDPipe) tripId: string,
+    @Param('expenseId', ParseUUIDPipe) expenseId: string,
+    @Body() dto: CreateExpenseDto,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<ExpenseResponse> {
+    return this.expensesService.update(
+      tripId,
+      expenseId,
+      request.user.id,
+      dto,
+    );
+  }
 
   @Post()
   create(

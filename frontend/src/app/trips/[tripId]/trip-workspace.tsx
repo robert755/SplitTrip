@@ -83,6 +83,7 @@ export function TripWorkspace({ tripId }: { tripId: string }) {
     string[]
   >([]);
   const [shareAmounts, setShareAmounts] = useState<Record<string, string>>({});
+  const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
 
   useEffect(() => {
     if (isInitializing) {
@@ -212,6 +213,39 @@ export function TripWorkspace({ tripId }: { tripId: string }) {
     setShareAmounts(splitEqually(amount, nextIds));
   }
 
+  function startEditingExpense(expense: Expense) {
+    setEditingExpenseId(expense.id);
+    setDescription(expense.description);
+    setAmount(expense.amount);
+    setPayerId(expense.payer.id);
+    const expenseParticipantIds = expense.shares.map(
+      (share) => share.participantId,
+    );
+    setIncludedParticipantIds(expenseParticipantIds);
+    setShareAmounts(
+      Object.fromEntries(
+        expense.shares.map((share) => [share.participantId, share.amount]),
+      ),
+    );
+    setError("");
+    setNotice(`Editing "${expense.description}".`);
+    document
+      .querySelector(".expense-entry-form")
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function cancelEditingExpense() {
+    setEditingExpenseId(null);
+    setDescription("");
+    setAmount("");
+    setShareAmounts({});
+    setIncludedParticipantIds(
+      participants.map((participant) => participant.id),
+    );
+    setPayerId(participants[0]?.id ?? "");
+    setNotice("");
+  }
+
   async function addExpense(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!accessToken) {
@@ -253,25 +287,45 @@ export function TripWorkspace({ tripId }: { tripId: string }) {
     setNotice("");
     setIsSubmittingExpense(true);
     try {
-      const expense = await apiRequest<Expense>(`/trips/${tripId}/expenses`, {
-        method: "POST",
-        headers: { Authorization: `Bearer ${accessToken}` },
-        body: JSON.stringify({
-          description: description.trim(),
-          payerId,
-          amount: formatCents(total),
-          shares: shares.map((share, index) => ({
-            ...share,
-            amount: formatCents(parsedShares[index] ?? 0),
-          })),
-        }),
-      });
-      setExpenses((current) => [expense, ...current]);
+      const isEditing = editingExpenseId !== null;
+      const expenseBody = {
+        description: description.trim(),
+        payerId,
+        amount: formatCents(total),
+        shares: shares.map((share, index) => ({
+          ...share,
+          amount: formatCents(parsedShares[index] ?? 0),
+        })),
+      };
+      const expense = await apiRequest<Expense>(
+        `/trips/${tripId}/expenses${editingExpenseId ? `/${editingExpenseId}` : ""}`,
+        {
+          method: editingExpenseId ? "PATCH" : "POST",
+          headers: { Authorization: `Bearer ${accessToken}` },
+          body: JSON.stringify(expenseBody),
+        },
+      );
+      setExpenses((current) =>
+        editingExpenseId
+          ? current
+              .map((currentExpense) =>
+                currentExpense.id === editingExpenseId ? expense : currentExpense,
+              )
+              .sort((left, right) =>
+                right.createdAt.localeCompare(left.createdAt),
+              )
+          : [expense, ...current],
+      );
+      setEditingExpenseId(null);
       setDescription("");
       setAmount("");
       setShareAmounts({});
       setSettlements(null);
-      setNotice("Expense added. The settlement plan is ready to recalculate.");
+      setNotice(
+        isEditing
+          ? "Expense updated. The settlement plan is ready to recalculate."
+          : "Expense added. The settlement plan is ready to recalculate.",
+      );
     } catch (createError) {
       setError(
         apiErrorMessage(
@@ -462,11 +516,21 @@ export function TripWorkspace({ tripId }: { tripId: string }) {
                 <div className="workspace-panel-heading">
                   <div>
                     <p className="section-kicker">KEEP TRACK</p>
-                    <h2>Add an expense</h2>
+                    <h2>{editingExpenseId ? "Edit expense" : "Add an expense"}</h2>
                   </div>
-                  <span aria-hidden="true" className="panel-sparkle">
-                    ↗
-                  </span>
+                  {editingExpenseId ? (
+                    <button
+                      className="expense-edit-cancel"
+                      onClick={cancelEditingExpense}
+                      type="button"
+                    >
+                      Cancel
+                    </button>
+                  ) : (
+                    <span aria-hidden="true" className="panel-sparkle">
+                      ↗
+                    </span>
+                  )}
                 </div>
 
                 {participants.length === 0 ? (
@@ -578,7 +642,9 @@ export function TripWorkspace({ tripId }: { tripId: string }) {
                     >
                       {isSubmittingExpense
                         ? "Saving expense..."
-                        : "＋ Save expense"}
+                        : editingExpenseId
+                          ? "Save changes"
+                          : "＋ Save expense"}
                     </button>
                   </form>
                 )}
@@ -615,6 +681,13 @@ export function TripWorkspace({ tripId }: { tripId: string }) {
                       <strong className="workspace-expense-amount">
                         {formatMoney(expense.amount, expense.currency)}
                       </strong>
+                      <button
+                        className="expense-edit-button"
+                        onClick={() => startEditingExpense(expense)}
+                        type="button"
+                      >
+                        Edit
+                      </button>
                     </article>
                   ))}
                 </div>
