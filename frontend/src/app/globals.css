@@ -1606,6 +1606,33 @@ a {
   font-weight: 760;
 }
 
+.workspace-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.trip-delete-button {
+  padding: 8px 11px;
+  border: 1px solid #f0d9d9;
+  border-radius: 6px;
+  background: white;
+  color: #a13d3d;
+  font: inherit;
+  font-size: 9px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.trip-delete-button:hover:not(:disabled) {
+  background: #fff4f4;
+}
+
+.trip-delete-button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
 .workspace-stats {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2114,6 +2141,17 @@ a {
   gap: 11px;
 }
 
+.settlement-stale-notice {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px solid #f1dfb8;
+  border-radius: 7px;
+  background: #fffaf0;
+  color: #785b20;
+  font-size: 10px;
+  line-height: 1.55;
+}
+
 .settlement-result-icon {
   width: 36px;
   height: 36px;
@@ -2148,12 +2186,17 @@ a {
 .settlement-transfer {
   min-height: 54px;
   display: grid;
-  grid-template-columns: 30px minmax(0, 1fr) 18px 30px minmax(0, 1fr) auto;
+  grid-template-columns: 30px minmax(0, 1fr) 18px 30px minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 8px;
   padding: 8px 10px;
   border: 1px solid #edf0f1;
   border-radius: 7px;
+}
+
+.settlement-transfer-paid {
+  border-color: #dce8c9;
+  background: #fbfdf8;
 }
 
 .settlement-transfer > strong {
@@ -2176,6 +2219,24 @@ a {
   font-size: 10px;
   font-weight: 720;
   white-space: nowrap;
+}
+
+.settlement-paid-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #52616a;
+  font-size: 9px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.settlement-paid-toggle input {
+  accent-color: #4a7c24;
+}
+
+.settlement-paid-toggle input:disabled {
+  cursor: not-allowed;
 }
 
 .all-settled-message {
@@ -2354,6 +2415,11 @@ a {
     grid-column: 2 / -1;
     justify-self: end;
     margin-top: 3px;
+  }
+
+  .settlement-paid-toggle {
+    grid-column: 2 / -1;
+    justify-self: end;
   }
 
   .balance-summary > div {

@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { Prisma, type Participant } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { invalidateCurrentSettlementPlans } from '../settlements/invalidate-settlement-plans.js';
 import { CreateParticipantDto } from './create-participant.dto.js';
 
 export type ParticipantResponse = Pick<Participant, 'id' | 'name'>;
@@ -41,10 +42,18 @@ export class ParticipantsService {
       );
     }
 
-    return this.prisma.participant.create({
-      data: { tripId, name: dto.name },
-      select: participantSelect,
-    });
+    return this.prisma.$transaction(
+      async (transaction) => {
+        const participant = await transaction.participant.create({
+          data: { tripId, name: dto.name },
+          select: participantSelect,
+        });
+
+        await invalidateCurrentSettlementPlans(transaction, tripId);
+        return participant;
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
   }
 
   async findAll(
@@ -67,27 +76,36 @@ export class ParticipantsService {
   ): Promise<void> {
     await this.ensureTripIsOwnedByUser(tripId, ownerId);
 
-    const participant = await this.prisma.participant.findFirst({
-      where: { id: participantId, tripId },
-      select: {
-        id: true,
-        _count: { select: { paidExpenses: true, shares: true } },
+    await this.prisma.$transaction(
+      async (transaction) => {
+        const participant = await transaction.participant.findFirst({
+          where: { id: participantId, tripId },
+          select: {
+            id: true,
+            _count: { select: { paidExpenses: true, shares: true } },
+          },
+        });
+
+        if (!participant) {
+          throw new NotFoundException('Participant not found.');
+        }
+
+        if (
+          participant._count.paidExpenses > 0 ||
+          participant._count.shares > 0
+        ) {
+          throw new BadRequestException(
+            'This person is used in expenses. Edit or delete those expenses before removing them.',
+          );
+        }
+
+        await transaction.participant.delete({
+          where: { id: participant.id },
+        });
+        await invalidateCurrentSettlementPlans(transaction, tripId);
       },
-    });
-
-    if (!participant) {
-      throw new NotFoundException('Participant not found.');
-    }
-
-    if (participant._count.paidExpenses > 0 || participant._count.shares > 0) {
-      throw new BadRequestException(
-        'This person is used in expenses. Edit or delete those expenses before removing them.',
-      );
-    }
-
-    await this.prisma.participant.delete({
-      where: { id: participant.id },
-    });
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
   }
 
   private async ensureTripIsOwnedByUser(

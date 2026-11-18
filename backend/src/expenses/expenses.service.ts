@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { Prisma, type Expense } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { invalidateCurrentSettlementPlans } from '../settlements/invalidate-settlement-plans.js';
 import { CreateExpenseDto } from './dto/create-expense.dto.js';
 
 const expenseSelect = {
@@ -87,27 +88,33 @@ export class ExpensesService {
       throw new NotFoundException('Expense not found.');
     }
 
-    const expense = await this.prisma.$transaction(async (transaction) => {
-      await transaction.expenseShare.deleteMany({
-        where: { expenseId },
-      });
+    const expense = await this.prisma.$transaction(
+      async (transaction) => {
+        await transaction.expenseShare.deleteMany({
+          where: { expenseId },
+        });
 
-      return transaction.expense.update({
-        where: { id: expenseId },
-        data: {
-          payerId: dto.payerId,
-          description: dto.description,
-          amount: dto.amount,
-          shares: {
-            create: dto.shares.map((share) => ({
-              participantId: share.participantId,
-              amount: share.amount,
-            })),
+        const updatedExpense = await transaction.expense.update({
+          where: { id: expenseId },
+          data: {
+            payerId: dto.payerId,
+            description: dto.description,
+            amount: dto.amount,
+            shares: {
+              create: dto.shares.map((share) => ({
+                participantId: share.participantId,
+                amount: share.amount,
+              })),
+            },
           },
-        },
-        select: expenseSelect,
-      });
-    });
+          select: expenseSelect,
+        });
+
+        await invalidateCurrentSettlementPlans(transaction, tripId);
+        return updatedExpense;
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
 
     return this.toResponse(expense);
   }
@@ -147,21 +154,29 @@ export class ExpensesService {
       );
     }
 
-    const expense = await this.prisma.expense.create({
-      data: {
-        tripId,
-        payerId: dto.payerId,
-        description: dto.description,
-        amount: dto.amount,
-        shares: {
-          create: dto.shares.map((share) => ({
-            participantId: share.participantId,
-            amount: share.amount,
-          })),
-        },
+    const expense = await this.prisma.$transaction(
+      async (transaction) => {
+        const createdExpense = await transaction.expense.create({
+          data: {
+            tripId,
+            payerId: dto.payerId,
+            description: dto.description,
+            amount: dto.amount,
+            shares: {
+              create: dto.shares.map((share) => ({
+                participantId: share.participantId,
+                amount: share.amount,
+              })),
+            },
+          },
+          select: expenseSelect,
+        });
+
+        await invalidateCurrentSettlementPlans(transaction, tripId);
+        return createdExpense;
       },
-      select: expenseSelect,
-    });
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
 
     return this.toResponse(expense);
   }

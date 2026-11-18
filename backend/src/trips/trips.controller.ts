@@ -1,7 +1,12 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
+  HttpStatus,
+  Param,
+  ParseUUIDPipe,
   Post,
   Req,
   UseGuards,
@@ -27,5 +32,14 @@ export class TripsController {
   @Get()
   findAll(@Req() request: AuthenticatedRequest): Promise<TripResponse[]> {
     return this.tripsService.findAll(request.user.id);
+  }
+
+  @Delete(':tripId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  remove(
+    @Param('tripId', ParseUUIDPipe) tripId: string,
+    @Req() request: AuthenticatedRequest,
+  ): Promise<void> {
+    return this.tripsService.remove(tripId, request.user.id);
   }
 }

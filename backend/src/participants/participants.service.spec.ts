@@ -13,28 +13,35 @@ describe('ParticipantsService.remove', () => {
       _count: { paidExpenses: number; shares: number };
     } | null,
   ) {
-    const prismaMock = {
-      trip: { findFirst: vi.fn().mockResolvedValue({ id: tripId }) },
+    const transaction = {
       participant: {
         findFirst: vi.fn().mockResolvedValue(participant),
         delete: vi.fn().mockResolvedValue({ id: participantId }),
       },
+      settlementPlan: { updateMany: vi.fn().mockResolvedValue({ count: 0 }) },
+    };
+    const prismaMock = {
+      trip: { findFirst: vi.fn().mockResolvedValue({ id: tripId }) },
+      $transaction: vi.fn(
+        async (callback: (client: typeof transaction) => Promise<unknown>) =>
+          callback(transaction),
+      ),
     };
     return {
       service: new ParticipantsService(prismaMock as unknown as PrismaService),
-      prismaMock,
+      transaction,
     };
   }
 
   it('deletes a participant who is not used in any expenses', async () => {
-    const { service, prismaMock } = createService({
+    const { service, transaction } = createService({
       id: participantId,
       _count: { paidExpenses: 0, shares: 0 },
     });
 
     await service.remove(tripId, participantId, ownerId);
 
-    expect(prismaMock.participant.delete).toHaveBeenCalledWith({
+    expect(transaction.participant.delete).toHaveBeenCalledWith({
       where: { id: participantId },
     });
   });
@@ -45,7 +52,7 @@ describe('ParticipantsService.remove', () => {
   ])(
     'blocks deletion when the participant has expense history: $paidExpenses paid, $shares shares',
     async ({ paidExpenses, shares }) => {
-      const { service, prismaMock } = createService({
+      const { service, transaction } = createService({
         id: participantId,
         _count: { paidExpenses, shares },
       });
@@ -53,7 +60,7 @@ describe('ParticipantsService.remove', () => {
       await expect(
         service.remove(tripId, participantId, ownerId),
       ).rejects.toThrow(BadRequestException);
-      expect(prismaMock.participant.delete).not.toHaveBeenCalled();
+      expect(transaction.participant.delete).not.toHaveBeenCalled();
     },
   );
 });

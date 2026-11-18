@@ -46,6 +46,11 @@ export interface Expense {
 }
 
 export interface Settlements {
+  id: string;
+  revision: number;
+  isCurrent: boolean;
+  createdAt: string;
+  invalidatedAt: string | null;
   currency: string;
   balances: Array<{
     participantId: string;
@@ -53,11 +58,20 @@ export interface Settlements {
     balance: string;
   }>;
   settlements: Array<{
+    id: string;
     from: { participantId: string; name: string };
     to: { participantId: string; name: string };
     amount: string;
+    isPaid: boolean;
+    paidAt: string | null;
   }>;
   transferCount: number;
+}
+
+export interface SettlementPayment {
+  id: string;
+  isPaid: boolean;
+  paidAt: string | null;
 }
 
 export class ApiError extends Error {

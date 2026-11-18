@@ -9,6 +9,7 @@ import {
   apiRequest,
   type Expense,
   type Participant,
+  type SettlementPayment,
   type Settlements,
   type Trip,
 } from "@/lib/api";
@@ -75,6 +76,10 @@ export function TripWorkspace({ tripId }: { tripId: string }) {
   >(null);
   const [isSubmittingExpense, setIsSubmittingExpense] = useState(false);
   const [isCalculating, setIsCalculating] = useState(false);
+  const [isUpdatingTransferId, setIsUpdatingTransferId] = useState<
+    string | null
+  >(null);
+  const [isDeletingTrip, setIsDeletingTrip] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -108,17 +113,22 @@ export function TripWorkspace({ tripId }: { tripId: string }) {
           throw new ApiError("We couldn't find that trip.", 404);
         }
 
-        const [savedParticipants, savedExpenses] = await Promise.all([
+        const [savedParticipants, savedExpenses, savedSettlements] =
+          await Promise.all([
           apiRequest<Participant[]>(`/trips/${tripId}/participants`, {
             headers,
           }),
           apiRequest<Expense[]>(`/trips/${tripId}/expenses`, { headers }),
+          apiRequest<Settlements | null>(`/trips/${tripId}/settlements`, {
+            headers,
+          }),
         ]);
 
         if (active) {
           setTrip(selectedTrip);
           setParticipants(savedParticipants);
           setExpenses(savedExpenses);
+          setSettlements(savedSettlements);
           setPayerId(savedParticipants[0]?.id ?? "");
           setIncludedParticipantIds(
             savedParticipants.map((participant) => participant.id),
@@ -155,6 +165,18 @@ export function TripWorkspace({ tripId }: { tripId: string }) {
       ),
     [expenses],
   );
+
+  function markSettlementPlanStale() {
+    setSettlements((current) =>
+      current?.isCurrent
+        ? {
+            ...current,
+            isCurrent: false,
+            invalidatedAt: new Date().toISOString(),
+          }
+        : current,
+    );
+  }
 
   async function addParticipant(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -201,7 +223,7 @@ export function TripWorkspace({ tripId }: { tripId: string }) {
       setIncludedParticipantIds(nextParticipantIds);
       setShareAmounts(splitEqually(amount, nextParticipantIds));
       setParticipantName("");
-      setSettlements(null);
+      markSettlementPlanStale();
       setNotice(`${participant.name} is in the group.`);
     } catch (createError) {
       setError(
@@ -258,7 +280,7 @@ export function TripWorkspace({ tripId }: { tripId: string }) {
               ?.id ?? "")
           : current,
       );
-      setSettlements(null);
+      markSettlementPlanStale();
       setNotice(`${participant.name} was removed from the trip.`);
     } catch (deleteError) {
       setError(
@@ -406,7 +428,7 @@ export function TripWorkspace({ tripId }: { tripId: string }) {
       setDescription("");
       setAmount("");
       setShareAmounts({});
-      setSettlements(null);
+      markSettlementPlanStale();
       setNotice(
         isEditing
           ? "Expense updated. The settlement plan is ready to recalculate."
@@ -436,9 +458,13 @@ export function TripWorkspace({ tripId }: { tripId: string }) {
     try {
       const result = await apiRequest<Settlements>(
         `/trips/${tripId}/settlements`,
-        { headers: { Authorization: `Bearer ${accessToken}` } },
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${accessToken}` },
+        },
       );
       setSettlements(result);
+      setNotice("Settlement plan saved. Mark each transfer as paid when sent.");
     } catch (calculateError) {
       setError(
         apiErrorMessage(
@@ -448,6 +474,87 @@ export function TripWorkspace({ tripId }: { tripId: string }) {
       );
     } finally {
       setIsCalculating(false);
+    }
+  }
+
+  async function updateTransferPayment(
+    transferId: string,
+    isPaid: boolean,
+  ) {
+    if (!accessToken) {
+      router.replace("/login");
+      return;
+    }
+
+    setError("");
+    setIsUpdatingTransferId(transferId);
+    try {
+      const payment = await apiRequest<SettlementPayment>(
+        `/trips/${tripId}/settlements/${transferId}`,
+        {
+          method: "PATCH",
+          headers: { Authorization: `Bearer ${accessToken}` },
+          body: JSON.stringify({ isPaid }),
+        },
+      );
+      setSettlements((current) =>
+        current
+          ? {
+              ...current,
+              settlements: current.settlements.map((transfer) =>
+                transfer.id === payment.id
+                  ? {
+                      ...transfer,
+                      isPaid: payment.isPaid,
+                      paidAt: payment.paidAt,
+                    }
+                  : transfer,
+              ),
+            }
+          : current,
+      );
+    } catch (updateError) {
+      setError(
+        apiErrorMessage(
+          updateError,
+          "We couldn't update this payment. Please try again.",
+        ),
+      );
+    } finally {
+      setIsUpdatingTransferId(null);
+    }
+  }
+
+  async function deleteTrip() {
+    if (
+      !window.confirm(
+        `Permanently delete "${trip?.name}" and all its people, expenses, and settlement history?`,
+      )
+    ) {
+      return;
+    }
+    if (!accessToken) {
+      router.replace("/login");
+      return;
+    }
+
+    setError("");
+    setIsDeletingTrip(true);
+    try {
+      await apiRequest<void>(`/trips/${tripId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      router.replace("/trips");
+    } catch (deleteError) {
+      setError(
+        apiErrorMessage(
+          deleteError,
+          "We couldn't delete this trip. Please try again.",
+        ),
+      );
+    } finally {
+      setIsDeletingTrip(false);
     }
   }
 
@@ -516,7 +623,17 @@ export function TripWorkspace({ tripId }: { tripId: string }) {
                   Bring the group together. Keep the money part simple.
                 </p>
               </div>
-              <span className="workspace-currency">{trip.currency}</span>
+              <div className="workspace-heading-actions">
+                <span className="workspace-currency">{trip.currency}</span>
+                <button
+                  className="trip-delete-button"
+                  disabled={isDeletingTrip}
+                  onClick={deleteTrip}
+                  type="button"
+                >
+                  {isDeletingTrip ? "Deleting trip..." : "Delete trip"}
+                </button>
+              </div>
             </div>
 
             <div className="workspace-stats">
@@ -822,18 +939,34 @@ export function TripWorkspace({ tripId }: { tripId: string }) {
                 </div>
                 <button
                   className="workspace-primary-button calculate-button"
-                  disabled={isCalculating || participants.length === 0}
+                  disabled={
+                    isCalculating ||
+                    participants.length === 0 ||
+                    settlements?.isCurrent === true
+                  }
                   onClick={calculateSettlements}
                   type="button"
                 >
                   {isCalculating
                     ? "Calculating..."
-                    : "✳ Calculate minimum transfers"}
+                    : settlements?.isCurrent
+                      ? "✓ Settlement plan saved"
+                      : settlements
+                        ? "↻ Recalculate minimum transfers"
+                        : "✳ Calculate minimum transfers"}
                 </button>
               </div>
 
               {settlements && (
                 <div className="settlement-result" aria-live="polite">
+                  {!settlements.isCurrent && (
+                    <p className="settlement-stale-notice" role="status">
+                      This is saved history from revision {settlements.revision}.
+                      The trip changed after this calculation; recalculate to
+                      get the current plan. Previous payment marks are kept in
+                      history.
+                    </p>
+                  )}
                   <div className="settlement-result-heading">
                     <span className="settlement-result-icon" aria-hidden="true">
                       ✓
@@ -852,8 +985,8 @@ export function TripWorkspace({ tripId }: { tripId: string }) {
                     <ol className="settlement-transfer-list">
                       {settlements.settlements.map((settlement, index) => (
                         <li
-                          className="settlement-transfer"
-                          key={`${settlement.from.participantId}-${settlement.to.participantId}-${index}`}
+                          className={`settlement-transfer ${settlement.isPaid ? "settlement-transfer-paid" : ""}`}
+                          key={settlement.id}
                         >
                           <span
                             className={`participant-avatar avatar-${index % 4}`}
@@ -876,6 +1009,29 @@ export function TripWorkspace({ tripId }: { tripId: string }) {
                               settlements.currency,
                             )}
                           </span>
+                          <label className="settlement-paid-toggle">
+                            <input
+                              checked={settlement.isPaid}
+                              disabled={
+                                !settlements.isCurrent ||
+                                isUpdatingTransferId !== null
+                              }
+                              onChange={(event) =>
+                                updateTransferPayment(
+                                  settlement.id,
+                                  event.target.checked,
+                                )
+                              }
+                              type="checkbox"
+                            />
+                            <span>
+                              {isUpdatingTransferId === settlement.id
+                                ? "Saving..."
+                                : settlement.isPaid
+                                  ? "Paid"
+                                  : "Mark paid"}
+                            </span>
+                          </label>
                         </li>
                       ))}
                     </ol>
