@@ -16,11 +16,13 @@ export function getAllowedFrontendOrigins(): string[] {
     ? configuredOrigins.split(',').map((origin) => origin.trim())
     : process.env['NODE_ENV'] === 'production'
       ? []
-      : ['http://localhost:3001'];
+      : ['http://localhost:3000'];
 
   for (const origin of origins) {
     if (!origin || new URL(origin).origin !== origin) {
-      throw new Error('FRONTEND_ORIGINS must contain valid origins without paths.');
+      throw new Error(
+        'FRONTEND_ORIGINS must contain valid origins without paths.',
+      );
     }
   }
 

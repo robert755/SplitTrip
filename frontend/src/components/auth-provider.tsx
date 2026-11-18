@@ -1,0 +1,137 @@
+"use client";
+
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
+import {
+  ApiError,
+  apiRequest,
+  type AuthResponse,
+  type AuthUser,
+} from "@/lib/api";
+
+interface AuthContextValue {
+  accessToken: string | null;
+  user: AuthUser | null;
+  isInitializing: boolean;
+  initializationError: string | null;
+  login: (email: string, password: string) => Promise<void>;
+  register: (email: string, password: string) => Promise<void>;
+  logout: () => Promise<void>;
+}
+
+const AuthContext = createContext<AuthContextValue | null>(null);
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [isInitializing, setIsInitializing] = useState(true);
+  const [initializationError, setInitializationError] = useState<string | null>(
+    null,
+  );
+
+  const applyAuth = useCallback((auth: AuthResponse) => {
+    setAccessToken(auth.accessToken);
+    setUser(auth.user);
+    setInitializationError(null);
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    void apiRequest<AuthResponse>("/auth/refresh", { method: "POST" })
+      .then((auth) => {
+        if (active) {
+          applyAuth(auth);
+        }
+      })
+      .catch((error: unknown) => {
+        if (active) {
+          setAccessToken(null);
+          setUser(null);
+          if (!(error instanceof ApiError && error.status === 401)) {
+            setInitializationError(
+              "We couldn't check your session. Make sure the API is running.",
+            );
+          }
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setIsInitializing(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [applyAuth]);
+
+  const login = useCallback(
+    async (email: string, password: string) => {
+      const auth = await apiRequest<AuthResponse>("/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ email, password }),
+      });
+      applyAuth(auth);
+    },
+    [applyAuth],
+  );
+
+  const register = useCallback(
+    async (email: string, password: string) => {
+      const auth = await apiRequest<AuthResponse>("/auth/register", {
+        method: "POST",
+        body: JSON.stringify({ email, password }),
+      });
+      applyAuth(auth);
+    },
+    [applyAuth],
+  );
+
+  const logout = useCallback(async () => {
+    try {
+      await apiRequest<void>("/auth/logout", { method: "POST" });
+    } finally {
+      setAccessToken(null);
+      setUser(null);
+    }
+  }, []);
+
+  const value = useMemo(
+    () => ({
+      accessToken,
+      user,
+      isInitializing,
+      initializationError,
+      login,
+      register,
+      logout,
+    }),
+    [
+      accessToken,
+      user,
+      isInitializing,
+      initializationError,
+      login,
+      register,
+      logout,
+    ],
+  );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+export function useAuth(): AuthContextValue {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error("useAuth must be used within AuthProvider.");
+  }
+  return context;
+}
