@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Prisma, type Trip } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -51,6 +51,28 @@ export class TripsService {
       data: { name: createTripDto.name.trim(), ownerId },
       select: tripSelect,
     });
+  }
+
+  async remove(tripId: string, ownerId: string): Promise<void> {
+    const trip = await this.prisma.trip.findFirst({
+      where: { id: tripId, ownerId },
+      select: { id: true },
+    });
+    if (!trip) {
+      throw new NotFoundException('Trip not found.');
+    }
+
+    await this.prisma.$transaction(
+      async (transaction) => {
+        await transaction.expenseShare.deleteMany({
+          where: { expense: { tripId } },
+        });
+        await transaction.expense.deleteMany({ where: { tripId } });
+        await transaction.participant.deleteMany({ where: { tripId } });
+        await transaction.trip.delete({ where: { id: tripId } });
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
   }
 
   async findAll(ownerId: string): Promise<TripResponse[]> {

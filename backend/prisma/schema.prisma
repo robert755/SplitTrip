@@ -19,9 +19,10 @@ model Trip {
   ownerId   String?  @map("owner_id") @db.Uuid
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  owner        User?          @relation(fields: [ownerId], references: [id], onDelete: SetNull)
-  participants Participant[]
-  expenses     Expense[]
+  owner           User?            @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  participants    Participant[]
+  expenses        Expense[]
+  settlementPlans SettlementPlan[]
 
   @@index([ownerId])
   @@map("trips")
@@ -33,7 +34,7 @@ model User {
   passwordHash String   @map("password_hash") @db.VarChar(255)
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  trips          Trip[]
+  trips           Trip[]
   refreshSessions RefreshSession[]
 
   @@map("users")
@@ -97,4 +98,59 @@ model ExpenseShare {
   @@unique([expenseId, participantId])
   @@index([participantId])
   @@map("expense_shares")
+}
+
+model SettlementPlan {
+  id            String    @id @default(uuid()) @db.Uuid
+  tripId        String    @map("trip_id") @db.Uuid
+  revision      Int
+  currency      String    @db.Char(3)
+  transferCount Int       @map("transfer_count")
+  isCurrent     Boolean   @default(true) @map("is_current")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  invalidatedAt DateTime? @map("invalidated_at") @db.Timestamptz(6)
+
+  trip      Trip                 @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  balances  SettlementBalance[]
+  transfers SettlementTransfer[]
+
+  @@unique([tripId, revision])
+  @@index([tripId, isCurrent, createdAt])
+  @@map("settlement_plans")
+}
+
+model SettlementBalance {
+  id              String  @id @default(uuid()) @db.Uuid
+  planId          String  @map("plan_id") @db.Uuid
+  participantId   String  @map("participant_id") @db.Uuid
+  participantName String  @map("participant_name") @db.VarChar(100)
+  balance         Decimal @db.Decimal(10, 2)
+
+  plan     SettlementPlan       @relation(fields: [planId], references: [id], onDelete: Cascade)
+  outgoing SettlementTransfer[] @relation("SettlementTransferFrom")
+  incoming SettlementTransfer[] @relation("SettlementTransferTo")
+
+  @@unique([planId, participantId])
+  @@unique([planId, id])
+  @@index([planId])
+  @@map("settlement_balances")
+}
+
+model SettlementTransfer {
+  id            String    @id @default(uuid()) @db.Uuid
+  planId        String    @map("plan_id") @db.Uuid
+  sequence      Int
+  fromBalanceId String    @map("from_balance_id") @db.Uuid
+  toBalanceId   String    @map("to_balance_id") @db.Uuid
+  amount        Decimal   @db.Decimal(10, 2)
+  isPaid        Boolean   @default(false) @map("is_paid")
+  paidAt        DateTime? @map("paid_at") @db.Timestamptz(6)
+
+  plan        SettlementPlan    @relation(fields: [planId], references: [id], onDelete: Cascade)
+  fromBalance SettlementBalance @relation("SettlementTransferFrom", fields: [planId, fromBalanceId], references: [planId, id], onDelete: Cascade)
+  toBalance   SettlementBalance @relation("SettlementTransferTo", fields: [planId, toBalanceId], references: [planId, id], onDelete: Cascade)
+
+  @@unique([planId, sequence])
+  @@index([planId])
+  @@map("settlement_transfers")
 }

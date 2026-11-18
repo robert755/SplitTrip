@@ -34,11 +34,16 @@
 - `POST /auth/logout` revokes the refresh-token family and clears the cookie.
 - `GET /trips` lists the authenticated user's trips.
 - `POST /trips` creates a trip for the authenticated user with a JSON body such as `{ "name": "Via Ferrata" }`.
+- `DELETE /trips/:tripId` permanently deletes a trip and its related data.
 - `GET /trips/:tripId/participants` lists participants in a trip owned by the authenticated user.
 - `POST /trips/:tripId/participants` adds a participant with a JSON body such as `{ "name": "Alex" }`.
+- `DELETE /trips/:tripId/participants/:participantId` removes a participant if they are not used in expenses.
 - `GET /trips/:tripId/expenses` lists expenses in a trip owned by the authenticated user.
 - `POST /trips/:tripId/expenses` adds an expense with a payer and custom participant shares.
-- `GET /trips/:tripId/settlements` returns net balances and an exact minimum-transfer settlement plan.
+- `PATCH /trips/:tripId/expenses/:expenseId` updates an expense and its participant shares.
+- `GET /trips/:tripId/settlements` returns the latest saved settlement plan, including an outdated plan if trip data changed.
+- `POST /trips/:tripId/settlements` calculates and saves a new version of the exact minimum-transfer plan.
+- `PATCH /trips/:tripId/settlements/:transferId` marks a transfer paid or unpaid with `{ "isPaid": true }`.
 
 Trips are stored in the configured PostgreSQL database through Prisma. Passwords are hashed with Argon2id. Refresh tokens are random, stored only as SHA-256 hashes, rotated on refresh, and revoked on logout or detected reuse. Access tokens expire after 15 minutes. Authentication endpoints are rate limited, and auth mutations are restricted to configured browser origins.
 
@@ -52,9 +57,11 @@ Expense amounts must be decimal strings with up to two fractional digits (for ex
 
 Settlement plans minimize the number of transfers exactly for trips with up to 16 participants who have non-zero balances. A larger calculation returns `422` instead of silently switching to an approximate result.
 
+Settlement plans and balance snapshots are versioned in the database. Changes to participants or expenses mark the current plan outdated; payment status can only be changed on the current plan. Previous plans and payment marks are retained as history.
+
 ## Database setup
 
-Prisma is initialized for PostgreSQL with `Trip`, `Participant`, `Expense`, and `ExpenseShare` models. The participant count is derived from each trip's participants. Expense shares store each participant's custom amount; the application will validate that shares add up to the expense total. Expenses in a trip use its currency, which defaults to RON. Copy `.env.example` to `.env` and replace both placeholders with the connection strings from Supabase. `DATABASE_URL` uses the transaction-mode pooler (port `6543`) for the app, while `DIRECT_URL` uses the session-mode pooler (port `5432`) for Prisma CLI commands and migrations. Keep `.env` local and never commit it.
+Prisma models include trips, participants, expenses, shares, versioned settlement plans, balance snapshots, and transfers. Trip deletion also removes dependent financial and settlement data. Copy `.env.example` to `.env` and replace both placeholders with the connection strings from Supabase. `DATABASE_URL` uses the transaction-mode pooler (port `6543`) for the app, while `DIRECT_URL` uses the session-mode pooler (port `5432`) for Prisma CLI commands and migrations. Keep `.env` local and never commit it.
 
 ## Project setup
 
