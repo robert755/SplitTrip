@@ -84,6 +84,7 @@ export function TripWorkspace({ tripId }: { tripId: string }) {
   >([]);
   const [shareAmounts, setShareAmounts] = useState<Record<string, string>>({});
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
+  const [hasCompletedPeopleStep, setHasCompletedPeopleStep] = useState(false);
 
   useEffect(() => {
     if (isInitializing) {
@@ -119,6 +120,7 @@ export function TripWorkspace({ tripId }: { tripId: string }) {
           setIncludedParticipantIds(
             savedParticipants.map((participant) => participant.id),
           );
+          setHasCompletedPeopleStep(savedParticipants.length > 0);
         }
       })
       .catch((loadError: unknown) => {
@@ -213,6 +215,20 @@ export function TripWorkspace({ tripId }: { tripId: string }) {
   function changeAmount(value: string) {
     setAmount(value);
     setShareAmounts(splitEqually(value, includedParticipantIds));
+  }
+
+  function continueToExpenses() {
+    if (participants.length === 0) {
+      setError("Add at least one person before continuing.");
+      return;
+    }
+    setError("");
+    setHasCompletedPeopleStep(true);
+    window.requestAnimationFrame(() => {
+      document
+        .querySelector(".expense-panel")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   }
 
   function toggleIncludedParticipant(participantId: string) {
@@ -467,7 +483,9 @@ export function TripWorkspace({ tripId }: { tripId: string }) {
             )}
             {notice && <p className="workspace-notice">{notice}</p>}
 
-            <div className="workspace-grid">
+            <div
+              className={`workspace-grid ${hasCompletedPeopleStep ? "" : "people-only-grid"}`}
+            >
               <section className="workspace-panel participants-panel">
                 <div className="workspace-panel-heading">
                   <div>
@@ -520,8 +538,18 @@ export function TripWorkspace({ tripId }: { tripId: string }) {
                     <p>Add your group before recording shared costs.</p>
                   </div>
                 )}
+                {participants.length > 0 && !hasCompletedPeopleStep && (
+                  <button
+                    className="workspace-primary-button people-step-button"
+                    onClick={continueToExpenses}
+                    type="button"
+                  >
+                    Continue to expenses →
+                  </button>
+                )}
               </section>
 
+              {hasCompletedPeopleStep && (
               <section className="workspace-panel expense-panel">
                 <div className="workspace-panel-heading">
                   <div>
@@ -659,6 +687,7 @@ export function TripWorkspace({ tripId }: { tripId: string }) {
                   </form>
                 )}
               </section>
+              )}
             </div>
 
             <section className="workspace-panel expense-history-panel">

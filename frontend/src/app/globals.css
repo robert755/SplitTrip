@@ -1648,6 +1648,18 @@ a {
   gap: 14px;
 }
 
+.workspace-grid.people-only-grid {
+  grid-template-columns: 1fr;
+  max-width: 620px;
+  width: 100%;
+  margin-inline: auto;
+}
+
+.people-step-button {
+  width: 100%;
+  margin-top: 16px;
+}
+
 .workspace-panel {
   min-width: 0;
   padding: 21px;
