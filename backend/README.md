@@ -28,7 +28,7 @@
 ## API
 
 - `GET /health` checks that the API is running.
-- `POST /auth/register` creates an account using an email and a password of at least 12 characters.
+- `POST /auth/register` creates an account using an email and a password of 12–128 characters.
 - `POST /auth/login` authenticates an account.
 - `POST /auth/refresh` rotates the HttpOnly refresh-token cookie and returns a new short-lived access token.
 - `POST /auth/logout` revokes the refresh-token family and clears the cookie.
@@ -45,6 +45,8 @@ Trips are stored in the configured PostgreSQL database through Prisma. Passwords
 Copy `.env.example` to `.env`, generate a unique `JWT_ACCESS_SECRET` with at least 32 characters (for example, `node -e "console.log(require('node:crypto').randomBytes(48).toString('base64url'))"`), and set `FRONTEND_ORIGINS` to the exact origin of the frontend. In production, use HTTPS and configure the frontend and API on a shared site (for example, `app.example.com` and `api.example.com`) so browsers can reliably send the secure refresh cookie. Browser requests to the API must include credentials so the refresh cookie is sent. Email verification and password reset are not implemented yet.
 
 After registering or logging in, send the returned access token as `Authorization: Bearer <accessToken>` to protected endpoints such as `/trips`. The refresh token is never returned in JSON; browsers keep it in the HttpOnly cookie.
+
+For local frontend development, set `FRONTEND_ORIGINS="http://localhost:3000"` in `backend/.env`, set `PORT=3001`, and run `npm run start:dev`. The Next.js app uses `NEXT_PUBLIC_API_URL="http://localhost:3001"` from `frontend/.env.local`.
 
 Expense amounts must be decimal strings with up to two fractional digits (for example, `"125.50"`). The API validates that each payer and share belongs to the trip, rejects duplicate participant shares, and checks that all shares sum exactly to the expense total.
 
