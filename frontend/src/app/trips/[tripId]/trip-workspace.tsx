@@ -163,6 +163,16 @@ export function TripWorkspace({ tripId }: { tripId: string }) {
       setError("Enter a name for this participant.");
       return;
     }
+    if (
+      participants.some(
+        (participant) =>
+          participant.name.trim().toLocaleLowerCase() ===
+          name.toLocaleLowerCase(),
+      )
+    ) {
+      setError("A participant with this name already exists in this trip.");
+      return;
+    }
 
     setError("");
     setNotice("");
