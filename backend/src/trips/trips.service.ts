@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { Prisma, type Trip } from '../generated/prisma/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { CreateTripDto } from './create-trip.dto.js';
@@ -16,6 +17,35 @@ const tripSelect = {
 export class TripsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  @Cron(CronExpression.EVERY_HOUR)
+  async deleteExpiredTrips(): Promise<void> {
+    const expirationThreshold = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const expiredTrips = await this.prisma.trip.findMany({
+      where: { createdAt: { lt: expirationThreshold } },
+      select: { id: true },
+    });
+
+    if (expiredTrips.length === 0) {
+      return;
+    }
+
+    const tripIds = expiredTrips.map((trip) => trip.id);
+    await this.prisma.$transaction(async (transaction) => {
+      await transaction.expenseShare.deleteMany({
+        where: { expense: { tripId: { in: tripIds } } },
+      });
+      await transaction.expense.deleteMany({
+        where: { tripId: { in: tripIds } },
+      });
+      await transaction.participant.deleteMany({
+        where: { tripId: { in: tripIds } },
+      });
+      await transaction.trip.deleteMany({
+        where: { id: { in: tripIds } },
+      });
+    });
+  }
+
   create(createTripDto: CreateTripDto, ownerId: string): Promise<TripResponse> {
     return this.prisma.trip.create({
       data: { name: createTripDto.name.trim(), ownerId },
@@ -23,7 +53,8 @@ export class TripsService {
     });
   }
 
-  findAll(ownerId: string): Promise<TripResponse[]> {
+  async findAll(ownerId: string): Promise<TripResponse[]> {
+    await this.deleteExpiredTrips();
     return this.prisma.trip.findMany({
       where: { ownerId },
       orderBy: { createdAt: 'desc' },
