@@ -63,6 +63,8 @@ Settlement plans and balance snapshots are versioned in the database. Changes to
 
 Prisma models include trips, participants, expenses, shares, versioned settlement plans, balance snapshots, and transfers. Trip deletion also removes dependent financial and settlement data. Copy `.env.example` to `.env` and replace both placeholders with the connection strings from Supabase. `DATABASE_URL` uses the transaction-mode pooler (port `6543`) for the app, while `DIRECT_URL` uses the session-mode pooler (port `5432`) for Prisma CLI commands and migrations. Keep `.env` local and never commit it.
 
+Row-Level Security is enabled for every application table. The app accesses PostgreSQL only through the backend using its private database connection; no Supabase Data API policies are defined, so API roles cannot access these tables directly. The backend's database role must own these tables or have `BYPASSRLS` to preserve backend access; verify the role configured in `DATABASE_URL` before deploying. Keep those credentials private, and enable RLS on any new public tables unless they have an explicitly reviewed access policy.
+
 ## Project setup
 
 ```bash
